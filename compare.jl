@@ -87,6 +87,39 @@ function reset!(acc::WelfordAccumulatorWelfordWestHanson)
     acc.s = Float32(0)
 end
 
+mutable struct WelfordAccumulatorWelfordWestHansonRearranged <: VarianceAccumulator
+    base::VarianceAccumulatorBase
+    m::Float32
+    s::Float32
+
+    WelfordAccumulatorWelfordWestHansonRearranged() =
+        new(VarianceAccumulatorBase(), Float32(0), Float32(0))
+end
+
+function add_sample!(acc::WelfordAccumulatorWelfordWestHansonRearranged, x::Float32)
+    increment_count!(acc)
+
+    j = Float32(get_count(acc))
+    delta = x - acc.m
+    acc.m += delta / j
+    acc.s += (j - 1) * delta * (delta / j)
+end
+
+function get_mean(acc::WelfordAccumulatorWelfordWestHansonRearranged)
+    return acc.m
+end
+
+function get_variance(acc::WelfordAccumulatorWelfordWestHansonRearranged)
+    n = Float32(get_count(acc))
+    return acc.s / (n - Float32(1))
+end
+
+function reset!(acc::WelfordAccumulatorWelfordWestHansonRearranged)
+    reset_count!(acc)
+    acc.m = Float32(0)
+    acc.s = Float32(0)
+end
+
 mutable struct WelfordAccumulatorYoungsCramer <: VarianceAccumulator
     base::VarianceAccumulatorBase
     t::Float32
@@ -116,6 +149,40 @@ function get_variance(acc::WelfordAccumulatorYoungsCramer)
 end
 
 function reset!(acc::WelfordAccumulatorYoungsCramer)
+    reset_count!(acc)
+    acc.t = Float32(0)
+    acc.s = Float32(0)
+end
+
+mutable struct WelfordAccumulatorYoungsCramerRearranged <: VarianceAccumulator
+    base::VarianceAccumulatorBase
+    t::Float32
+    s::Float32
+
+    WelfordAccumulatorYoungsCramerRearranged() =
+        new(VarianceAccumulatorBase(), Float32(0), Float32(0))
+end
+
+function add_sample!(acc::WelfordAccumulatorYoungsCramerRearranged, x::Float32)
+    increment_count!(acc)
+
+    j = Float32(get_count(acc))
+    acc.t += x
+    if j > 1
+        acc.s += (j * x - acc.t) ^ 2 / (j * (j - 1))
+    end
+end
+
+function get_mean(acc::WelfordAccumulatorYoungsCramerRearranged)
+    return acc.t / Float32(get_count(acc))
+end
+
+function get_variance(acc::WelfordAccumulatorYoungsCramerRearranged)
+    n = Float32(get_count(acc))
+    return acc.s / (n - Float32(1))
+end
+
+function reset!(acc::WelfordAccumulatorYoungsCramerRearranged)
     reset_count!(acc)
     acc.t = Float32(0)
     acc.s = Float32(0)
@@ -189,12 +256,12 @@ function process_data!(acc, data)
 end
 
 # Results display helper
-function display_results(name::String, mean_val, var_val, ref_mean, ref_var)
-    println("$(name):")
-    @printf("  Mean: %.10f, Variance: %.10f\n", mean_val, var_val)
+function display_results(i, name::String, mean_val, var_val, ref_mean, ref_var)
+    println("$(i). $(name):")
+    @printf("   Mean: %.10f, Variance: %.10f\n", mean_val, var_val)
     if ref_mean !== nothing && ref_var !== nothing
         @printf(
-            "  Error - Mean: %+.2e, Variance: %+.2e\n",
+            "   Error - Mean: %+.2e, Variance: %+.2e\n",
             mean_val - ref_mean,
             var_val - ref_var
         )
@@ -208,7 +275,15 @@ function compare_accumulators(data)
     accumulators = [
         ("Naïve", NaiveAccumulator()),
         ("Welford (Welford, West, and Hanson)", WelfordAccumulatorWelfordWestHanson()),
+        (
+            "Welford (Welford, West, and Hanson) rearranged",
+            WelfordAccumulatorWelfordWestHansonRearranged(),
+        ),
         ("Welford (Youngs and Cramer)", WelfordAccumulatorYoungsCramer()),
+        (
+            "Welford (Youngs and Cramer) rearranged",
+            WelfordAccumulatorYoungsCramerRearranged(),
+        ),
         ("Welford (Knuth)", WelfordAccumulatorKnuth()),
     ]
 
@@ -221,22 +296,22 @@ function compare_accumulators(data)
     println("Accumulator precision: Float32")
     println("=" ^ 80)
 
-    display_results("Reference (high precision)", ref_mean, ref_var, nothing, nothing)
+    display_results(0, "Reference (high precision)", ref_mean, ref_var, nothing, nothing)
 
     # Process each accumulator
     results = []
-    for (name, acc) in accumulators
+    for (i, (name, acc)) in enumerate(accumulators)
         mean_val, var_val = process_data!(acc, data)
-        display_results(name, mean_val, var_val, ref_mean, ref_var)
-        push!(results, (name, mean_val, var_val))
+        display_results(i, name, mean_val, var_val, ref_mean, ref_var)
+        push!(results, (i, mean_val, var_val))
     end
 
     # Summary of absolute errors
     println("Absolute errors:")
-    for (name, mean_val, var_val) in results
+    for (i, mean_val, var_val) in results
         mean_err = abs(mean_val - ref_mean)
         var_err = abs(var_val - ref_var)
-        @printf("%-40s - Mean: %.2e, Variance: %.2e\n", name, mean_err, var_err)
+        @printf("%d - Mean: %.2e, Variance: %.2e\n", i, mean_err, var_err)
     end
 
     println("\nTheoretical values: Mean = 1.0, Variance = 1.0")
