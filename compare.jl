@@ -233,8 +233,8 @@ end
 function add_sample!(acc::ReferenceAccumulator, x::Float32)
     increment_count!(acc)
 
-    acc.sum_x += x
-    acc.sum_x2 += x * x
+    acc.sum_x += BigFloat(x)
+    acc.sum_x2 += BigFloat(x) * BigFloat(x)
 end
 
 function get_mean(acc::ReferenceAccumulator)
@@ -276,7 +276,7 @@ function display_results(i, name::String, mean_val, var_val, ref_mean, ref_var)
 end
 
 # Main comparison function
-function compare_accumulators(data)
+function compare_accumulators()
     # Create accumulator instances
     accumulators = [
         ("Naïve", NaiveAccumulator()),
@@ -293,41 +293,76 @@ function compare_accumulators(data)
         ("Welford (Knuth)", WelfordAccumulatorKnuth()),
     ]
 
-    # High precision reference
     ref_acc = ReferenceAccumulator()
-    ref_mean, ref_var = process_data!(ref_acc, data)
 
-    println("Comparing variance accumulation methods")
-    println("Data: $(length(data)) samples from Normal(1, 1)")
-    println("Accumulator precision: Float32")
-    println("=" ^ 80)
-
-    display_results(0, "Reference (high precision)", ref_mean, ref_var, nothing, nothing)
-
-    # Process each accumulator
-    results = []
-    for (i, (name, acc)) in enumerate(accumulators)
-        mean_val, var_val = process_data!(acc, data)
-        display_results(i, name, mean_val, var_val, ref_mean, ref_var)
-        push!(results, (i, mean_val, var_val))
+    sample_counts = [10 ^ e for e = 1:9]
+    function iterations_for(sample_count)
+        return max(10, maximum(sample_counts) ÷ sample_count)
+    end
+    means = [
+        zeros(Float64, iterations_for(sample_count)) for
+        _ = 1:length(accumulators), sample_count in sample_counts
+    ]
+    vars = [
+        zeros(Float64, iterations_for(sample_count)) for
+        _ = 1:length(accumulators), sample_count in sample_counts
+    ]
+    for (i_sample_counts, sample_count) in enumerate(sample_counts)
+        for i_iteration = 1:iterations_for(sample_count)
+            # Use a specific PRNG to ensure reproducibility
+            rng = Xoshiro(i_iteration * sample_count)
+            # Normal(0.1, 0.01)
+            data = randn(rng, Float32, sample_count) .* Float32(0.01) .+ Float32(0.1)
+            ref_mean, ref_var = process_data!(ref_acc, data)
+            for i_acc = 1:length(accumulators)
+                _, acc = accumulators[i_acc]
+                mean_val, var_val = process_data!(acc, data)
+                means[i_acc, i_sample_counts][i_iteration] = abs(mean_val - ref_mean)
+                vars[i_acc, i_sample_counts][i_iteration] = abs(var_val - ref_var)
+            end
+        end
     end
 
-    # Summary of absolute errors
-    println("Absolute errors:")
-    for (i, mean_val, var_val) in results
-        mean_err = abs(mean_val - ref_mean)
-        var_err = abs(var_val - ref_var)
-        @printf("%d - Mean: %.2e, Variance: %.2e\n", i, mean_err, var_err)
+    for (i_sample_counts, sample_count) in enumerate(sample_counts)
+        println("=" ^ 164)
+        @printf(
+            "%-48s | %-55s | %-55s\n",
+            @sprintf(
+                "%d samples (%d iterations)",
+                sample_count,
+                iterations_for(sample_count)
+            ),
+            "Absolute error of the mean",
+            "Absolute error of the variance"
+        )
+        @printf(
+            "%-48s | %-26s | %-26s | %-26s | %-26s\n",
+            "Algorithm",
+            "Mean (/ max)",
+            "s (/ max)",
+            "Mean (/ max)",
+            "s (/ max)"
+        )
+        println("-" ^ 164)
+        means_m = [mean(means[i, i_sample_counts]) for i = 1:length(accumulators)]
+        means_s = [std(means[i, i_sample_counts]) for i = 1:length(accumulators)]
+        vars_m = [mean(vars[i, i_sample_counts]) for i = 1:length(accumulators)]
+        vars_s = [std(vars[i, i_sample_counts]) for i = 1:length(accumulators)]
+        for (i, (name, _)) in enumerate(accumulators)
+            @printf(
+                "%-48s | %.9e (%.6f) | %.9e (%.6f) | %.9e (%.6f) | %.9e (%.6f)\n",
+                name,
+                means_m[i],
+                means_m[i] / maximum(means_m),
+                means_s[i],
+                means_s[i] / maximum(means_s),
+                vars_m[i],
+                vars_m[i] / maximum(vars_m),
+                vars_s[i],
+                vars_s[i] / maximum(vars_s)
+            )
+        end
     end
-
-    println("\nTheoretical values: Mean = 1.0, Variance = 1.0")
 end
 
-# Generate test data and run comparison
-n_samples = 10 ^ 4
-# Pick any specific generator for reproducibility
-rng = Xoshiro(1)
-# Normal(1, 1)
-data = Float32.(randn(rng, n_samples) .+ 1.0)
-
-compare_accumulators(data)
+compare_accumulators()
