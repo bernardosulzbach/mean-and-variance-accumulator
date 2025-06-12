@@ -154,51 +154,6 @@ function reset!(acc::WelfordAccumulatorKnuth)
     acc.m2 = Float32(0)
 end
 
-mutable struct KahanAccumulator <: VarianceAccumulator
-    base::VarianceAccumulatorBase
-    sum_x::Float32
-    c_sum::Float32
-    sum_x2::Float32
-    c_sum2::Float32
-
-    KahanAccumulator() =
-        new(VarianceAccumulatorBase(), Float32(0), Float32(0), Float32(0), Float32(0))
-end
-
-function add_sample!(acc::KahanAccumulator, x::Float32)
-    increment_count!(acc)
-
-    # Kahan sum for x
-    y = x - acc.c_sum
-    t = acc.sum_x + y
-    acc.c_sum = (t - acc.sum_x) - y
-    acc.sum_x = t
-
-    # Kahan sum for x²
-    x2 = x * x
-    y2 = x2 - acc.c_sum2
-    t2 = acc.sum_x2 + y2
-    acc.c_sum2 = (t2 - acc.sum_x2) - y2
-    acc.sum_x2 = t2
-end
-
-function get_mean(acc::KahanAccumulator)
-    return acc.sum_x / Float32(get_count(acc))
-end
-
-function get_variance(acc::KahanAccumulator)
-    n = Float32(get_count(acc))
-    return (acc.sum_x2 - acc.sum_x * acc.sum_x / n) / (n - Float32(1))
-end
-
-function reset!(acc::KahanAccumulator)
-    reset_count!(acc)
-    acc.sum_x = Float32(0)
-    acc.c_sum = Float32(0)
-    acc.sum_x2 = Float32(0)
-    acc.c_sum2 = Float32(0)
-end
-
 # High precision reference accumulator
 mutable struct ReferenceAccumulator
     data::Vector{BigFloat}
@@ -255,7 +210,6 @@ function compare_accumulators(data)
         ("Welford (Welford, West, and Hanson)", WelfordAccumulatorWelfordWestHanson()),
         ("Welford (Youngs and Cramer)", WelfordAccumulatorYoungsCramer()),
         ("Welford (Knuth)", WelfordAccumulatorKnuth()),
-        ("Kahan", KahanAccumulator()),
     ]
 
     # High precision reference
