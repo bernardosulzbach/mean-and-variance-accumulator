@@ -222,28 +222,34 @@ function reset!(acc::WelfordAccumulatorKnuth)
 end
 
 # High precision reference accumulator
-mutable struct ReferenceAccumulator
-    data::Vector{BigFloat}
+mutable struct ReferenceAccumulator <: VarianceAccumulator
+    base::VarianceAccumulatorBase
+    sum_x::BigFloat
+    sum_x2::BigFloat
 
-    ReferenceAccumulator() = new(BigFloat[])
+    ReferenceAccumulator() = new(VarianceAccumulatorBase(), BigFloat(0), BigFloat(0))
 end
 
 function add_sample!(acc::ReferenceAccumulator, x::Float32)
-    push!(acc.data, BigFloat(x))
+    increment_count!(acc)
+
+    acc.sum_x += x
+    acc.sum_x2 += x * x
 end
 
 function get_mean(acc::ReferenceAccumulator)
-    return Float64(sum(acc.data) / length(acc.data))
+    return acc.sum_x / BigFloat(get_count(acc))
 end
 
 function get_variance(acc::ReferenceAccumulator)
-    n = length(acc.data)
-    mean_val = sum(acc.data) / n
-    return Float64(sum((acc.data .- mean_val) .^ 2) / (n - 1))
+    n = BigFloat(get_count(acc))
+    return (acc.sum_x2 - acc.sum_x * acc.sum_x / n) / (n - BigFloat(1))
 end
 
 function reset!(acc::ReferenceAccumulator)
-    empty!(acc.data)
+    reset_count!(acc)
+    acc.sum_x = BigFloat(0)
+    acc.sum_x2 = BigFloat(0)
 end
 
 # Generic function to process data with any accumulator
