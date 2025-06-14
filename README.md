@@ -2,4 +2,5 @@
 
 Compares the numerical stability of algorithms for calculating the variance.
 
-[Mirrored at Codeberg](https://codeberg.org/bernardosulzbach/mean-and-variance-accumulator).
+[GitHub upstream](https://github.com/bernardosulzbach/mean-and-variance-accumulator).
+[Codeberg mirror](https://codeberg.org/bernardosulzbach/mean-and-variance-accumulator).
